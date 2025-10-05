@@ -1,2 +1,2 @@
-# This file keeps the TEMP directory in git
-# Log files go here during pipeline execution (ephemeral)
+# This file keeps the data/input/ directory in git
+# User input files (*.md, *.html, *.pdf) are ignored via .gitignore

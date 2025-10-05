@@ -33,6 +33,7 @@ Self-contained agent definitions that run wherever Claude runs:
 - **No platform dependencies** - Works in Desktop, API, Projects
 - **No vendor lock-in** - Pure JSON configuration
 - **Portable workflows** - Copy files, load orchestrator, it works
+- **Resumable execution** - Copy prompt to new chat, continues where it left off
 
 **[Read more about TO-GO principles →](docs/DEVELOPMENT.md#architecture-overview)**
 
@@ -70,45 +71,89 @@ Before starting, ensure you have:
 ### Step 1: Create Claude Project
 
 1. **Open Claude Desktop → Create new Project**
-2. **Add Project Description:**
+2. **Add Project Knowledge:**
+   - Add all files from `definitions/` folder to Project Knowledge
+   - This makes definitions available in every chat
 
-   ```
-   TO-GO Agent: Autonomous tutorial processing pipeline. Load 
-   orchestrator.agent_v2.0.0.json to start. Batch processing with user gates.
-   ```
-
-3. **Add Custom Instructions:**
+3. **Add Custom Instructions - COPY THIS EXACTLY:**
 
    ```
    You are the TO-GO Agent Orchestrator v2.0.
+
+   # ROLE ENFORCEMENT
+   You COORDINATE agents. You do NOT execute agent tasks directly.
+
+   # INITIALIZATION (MANDATORY FIRST STEP)
+   Check if task-tracker exists in data/:
+   - IF task-tracker_session_*.json EXISTS:
+     → Load it
+     → Read current_stage and status
+     → Resume from last checkpoint
+     → Report: "Resuming session {id}, Stage {N}, {completed}/{total} files done"
    
-   BATCH PROCESSING:
-   - Process ALL files stage-by-stage
-   - NEVER infer properties across files
-   - WAIT for user approval after EACH stage
-   
-   QUALITY: Schema 100%, Completeness ≥98%, Fidelity ≥99%
-   NO emojis, icons, ellipsis, TODO markers
-   
-   DIRECTORIES:
+   - IF NO task-tracker exists:
+     → Create session_id: session_YYYYMMDD_HHMMSS_{random}
+     → Create data/task-tracker_session_{id}.json with structure per task.schema_v2.0.1.json
+     → Initialize: tasks=[], current_stage=null, status="INITIALIZED"
+     → Scan data/input/ for files
+     → Report: "New session {id} created, found {N} files, ready for Stage 1"
+
+   BLOCKING RULE: NO file processing until task-tracker exists and is loaded.
+
+   # PER-FILE PROCESSING (MANDATORY)
+   For EACH file:
+   1. CREATE task entry (status: CREATED)
+   2. UPDATE status: ASSIGNED
+   3. PROCESS file through current stage agent
+   4. WRITE output to data/{stage-id}-{stage-name}/
+   5. UPDATE status: COMPLETED
+   6. VALIDATE output per agent.config validation_rules
+   7. UPDATE status: VALIDATED (or FAILED if validation fails)
+   8. SAVE task-tracker to disk
+   9. Report progress: "File {n}/{total}: {filename} - {status}"
+
+   # STAGE COMPLETION
+   After ALL files in stage:
+   - Count successes/failures
+   - Report: "Stage {N} complete: {success} succeeded, {failed} failed"
+   - IF failed > 0: List failed files with reasons
+   - UPDATE stage_summary in task-tracker
+   - SAVE task-tracker
+   - WAIT for user: APPROVE | REJECT | RETRY_FAILED
+
+   # QUALITY
+   - Schema conformance: 100%
+   - Completeness: ≥98%  
+   - Fidelity: ≥99%
+   - NO emojis, icons, ellipsis, TODO markers
+   - Input isolation: NEVER infer across files
+
+   # DIRECTORIES
+   - Local: {repository-path}
    - Input: data/input/*.{md,html,pdf}
    - Outputs: data/{1-5}-{stage}/
    - READ-ONLY: definitions/
-   
-   EXECUTION:
-   Stage 1 → USER GATE → Stage 2 → USER GATE → ... → Stage 5
-   
-   ERROR HANDLING:
-   Max 3 retries per file, failed files don't block batch
+   - Task tracking: data/task-tracker_session_{id}.json
+
+   # ERROR HANDLING
+   - Max 3 retries per file
+   - Failed files don't block batch
+   - Always save task-tracker before stopping
    ```
 
-### Step 2: Load Orchestrator
+### Step 2: Start or Resume Processing
 
-In your Claude Project chat:
+**In your Claude Project chat, simply copy this ONE command:**
 
 ```
 Load: definitions/orchestrator.agent_v2.0.1.json
 ```
+
+**The orchestrator will automatically:**
+- Check if a task-tracker exists
+- If yes → Resume from last checkpoint
+- If no → Initialize new session, scan files, create tracker
+- Then wait for your command to proceed
 
 ### Step 3: Prepare Input Files
 
@@ -134,21 +179,74 @@ Create `data/profile.json`:
 
 If no profile provided, all platform variants are included.
 
-### Step 4: Start Processing
+### Step 4: Process Files
 
-In Claude Project chat:
-
+**First time or after approval:**
 ```
 Process all files in data/input/
 ```
 
+**Or continue from where you left off:**
+```
+Continue processing
+```
+
 The orchestrator will:
-- Process all files through Stage 1
-- Wait for your approval: `APPROVE | REJECT | RETRY_FAILED`
-- Continue stage-by-stage with approval gates
+- Check task-tracker for current state
+- Resume from last completed file/stage
+- Process remaining files
+- Wait for approval after each stage
 - Output to `data/5-generate/` (final Markdown + JSON)
 
 **[See detailed usage patterns →](docs/USAGE.md)**
+
+---
+
+## Resumable Execution
+
+**The killer feature:** Copy the initialization prompt to ANY new chat, it resumes automatically.
+
+### Scenario 1: Session Interrupted
+
+```
+Chat 1: Processing Stage 2, file 15/35
+        → Browser crash / Token limit / User closes chat
+
+Chat 2: [Copy initialization prompt]
+        → Orchestrator loads task-tracker
+        → Reports: "Resuming session {id}, Stage 2, 14/35 complete"
+        → "Ready to continue with file 15"
+```
+
+### Scenario 2: Review Between Stages
+
+```
+Chat 1: Stage 1 complete → USER GATE
+        → User: "I need to review outputs first"
+        → Chat ends
+
+[User reviews data/1-extract/ outputs]
+
+Chat 2: [Copy initialization prompt]  
+        → Orchestrator: "Stage 1 complete, waiting for approval"
+        → User: "APPROVE"
+        → Continues to Stage 2
+```
+
+### Scenario 3: Retry Failed Files
+
+```
+Chat 1: Stage 3 complete: 30 succeeded, 5 failed
+        → User: "RETRY_FAILED"
+        → Retries 5 files
+        → 3 succeed, 2 still fail
+
+Chat 2: [Copy initialization prompt]
+        → Shows: Stage 3, 33/35 complete, 2 failed
+        → User can: APPROVE (skip 2) or RETRY_FAILED again
+```
+
+**Key:** The task-tracker (`data/task-tracker_session_{id}.json`) holds ALL state.
 
 ---
 
@@ -204,16 +302,18 @@ See [Docker MCP Docs](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit
 **Process 10 tutorials with approval gates:**
 
 1. Place files in `data/input/`
-2. Start: `Process all files in data/input/`
-3. Stage 1 processes all files → Review → `APPROVE`
-4. Stage 2 processes all files → Review → `APPROVE`
-5. Continue through Stages 3-5
-6. Final outputs in `data/5-generate/`
+2. Load orchestrator (initializes automatically)
+3. Start: `Process all files in data/input/`
+4. Stage 1 processes all files → Review → `APPROVE`
+5. Stage 2 processes all files → Review → `APPROVE`
+6. Continue through Stages 3-5
+7. Final outputs in `data/5-generate/`
 
 **Benefits:**
 - Review each stage before proceeding
 - Failed files don't block the batch
 - Retry only failed files
+- Resume anytime from task-tracker
 
 **[See more usage patterns →](docs/USAGE.md)**
 
@@ -247,12 +347,16 @@ Run pipeline twice with different profiles for platform-specific tutorials.
 - Check for validation errors
 - Verify all 8 files exist in `definitions/`
 
+**Want to start fresh?**
+- Rename or delete `data/task-tracker_session_*.json`
+- Next load will create new session
+
 **Missing dependencies?**
 - Verify files exist:
-- `orchestrator.agent_v2.0.1.json`
-- `agent.config_v2.0.1.json`
-- `task.schema_v2.0.1.json`
-- `agent-{1-5}-*_v2.0.1.json` (5 files)
+  - `orchestrator.agent_v2.0.1.json`
+  - `agent.config_v2.0.1.json`
+  - `task.schema_v2.0.1.json`
+  - `agent-{1-5}-*_v2.0.1.json` (5 files)
 
 **[See complete troubleshooting guide →](docs/TROUBLESHOOTING.md)**
 
@@ -269,6 +373,7 @@ Run pipeline twice with different profiles for platform-specific tutorials.
 2. **Quality Gates** - Review and approve after each stage
 3. **Batch Efficiency** - Process many files without manual intervention
 4. **Flexible Retry** - Retry only failed files
+5. **Full Resumability** - Continue from any point via task-tracker
 
 **[Deep dive into pipeline architecture →](docs/PIPELINE.md)**
 
@@ -298,6 +403,7 @@ Run pipeline twice with different profiles for platform-specific tutorials.
 - [Profile Filtering](docs/USAGE.md#profile-based-filtering) - Platform-specific output
 - [Monitoring Progress](docs/USAGE.md#monitoring-progress) - Track execution
 - [Retry Strategies](docs/USAGE.md#retry-strategies) - Handle failures
+- [Session Management](docs/USAGE.md#session-management) - Resume interrupted work
 
 **Development:**
 - [Adding Custom Agents](docs/DEVELOPMENT.md#adding-a-custom-agent) - Extend pipeline
@@ -320,7 +426,7 @@ to-go-agent-tutorial-recycling/
 │   ├── input/                          ← Place source files here
 │   ├── {1-5}-{stage}/                  ← Stage outputs
 │   ├── profile.json (optional)
-│   └── task-tracker_session_{id}.json
+│   └── task-tracker_session_{id}.json ← STATE (enables resume)
 ├── docs/                               # Documentation
 │   ├── PIPELINE.md
 │   ├── USAGE.md
@@ -370,5 +476,5 @@ Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) sp
 
 ---
 
-**Version:** 2.0.0  
-**Last Updated:** 2025-10-05
+**Version:** 2.0.1  
+**Last Updated:** 2025-10-06
