@@ -29,11 +29,19 @@
 
 **TO-GO = Take it anywhere, use it everywhere**
 
-Self-contained agent definitions that run wherever Claude runs:
-- **No platform dependencies** - Works in Desktop, API, Projects
-- **No vendor lock-in** - Pure JSON configuration
+Self-contained agent definitions that run **anywhere**:
+- **Platform agnostic** - Works in web, desktop, API, wherever AI assistants run
+- **No specific chatbot required** - Works with Claude, or any MCP-compatible AI assistant
+- **Pure JSON configuration** - No vendor lock-in
 - **Portable workflows** - Copy files, load orchestrator, it works
 - **Resumable execution** - Copy prompt to new chat, continues where it left off
+
+**The key:** Agent definitions are just JSON files with instructions. Any AI assistant that can:
+1. Read JSON files
+2. Follow instructions
+3. Write output files
+
+...can run this pipeline.
 
 **[Read more about TO-GO principles →](docs/DEVELOPMENT.md#architecture-overview)**
 
@@ -59,101 +67,140 @@ The TO-GO Agent processes tutorials through a **5-stage pipeline** with user app
 
 ---
 
+## Prerequisites
+
+### What You Need
+
+1. **An AI Assistant** - Any of these work:
+   - Claude (Desktop, Web, API)
+   - ChatGPT (with file access)
+   - Any MCP-compatible AI assistant
+
+2. **File System Access** - For batch processing of larger datasets:
+   - Desktop chatbot with filesystem access (recommended for bulk processing)
+   - MCP connectors (most modern desktop chatbots support these)
+   - Or manual file upload (works but slower for many files)
+
+3. **This Repository** - Clone or download the agent definitions
+
+---
+
+## Installation
+
+### Step 1: Clone Repository
+
+```bash
+git clone https://github.com/neomint-research/to-go-agent-tutorial-recycling.git
+cd to-go-agent-tutorial-recycling
+```
+
+### Step 2: Configure Filesystem Access (for Bulk Processing)
+
+**Why:** For processing many files (10+), direct filesystem access is much faster than manual uploads.
+
+**Recommended: MCP-Compatible Desktop Chatbot**
+
+Most modern desktop chatbots now support filesystem access via MCP connectors. Examples:
+- Claude Desktop (Anthropic)
+- ChatGPT Desktop (OpenAI)  
+- Other MCP-compatible assistants
+
+**Method 1: Docker Desktop + MCP Toolkit (Recommended - Works with any MCP client)**
+
+Requirements: [Docker Desktop](https://www.docker.com/products/docker-desktop/) 4.40+ (macOS) or 4.42+ (Windows)
+
+1. **Install Docker Desktop** and enable MCP Toolkit
+2. **Configure Desktop Commander MCP Server:**
+
+   In Docker Desktop:
+   - Open MCP Toolkit settings
+   - Add "Desktop Commander" server
+   - Configure allowed paths:
+     ```
+     /path/to/to-go-agent-tutorial-recycling
+     ```
+   - Save configuration
+
+3. **Connect MCP Toolkit to your AI Assistant:**
+
+   **For Claude Desktop:**
+   - Settings → Integrations → Add MCP Server
+   - Select: Docker Desktop MCP Toolkit
+   - Authorize access
+
+   **For other MCP clients:**
+   - Check your client's documentation for MCP server integration
+
+4. **Verify:**
+   - Look for MCP server indicator (hammer icon in Claude, varies by client)
+   - Test: Ask assistant to list files in repository directory
+
+**Method 2: Direct MCP Configuration (Alternative - for specific chatbots)**
+
+Some chatbots allow direct MCP server configuration:
+
+**Example for Claude Desktop** (if not using Docker Desktop):
+
+1. Open Claude Desktop Settings → Developer → Edit Config
+2. Add configuration:
+
+   ```json
+   {
+     "mcpServers": {
+       "filesystem": {
+         "command": "npx",
+         "args": [
+           "-y",
+           "@modelcontextprotocol/server-filesystem",
+           "/absolute/path/to/to-go-agent-tutorial-recycling"
+         ]
+       }
+     }
+   }
+   ```
+
+3. Replace `/absolute/path/to/` with your actual repository path
+4. Restart Claude Desktop
+5. Verify: Look for hammer icon in input box
+
+**Note:** This method requires Node.js and varies by chatbot. Docker Desktop method is more universal.
+
+**Method 3: Manual File Upload (No MCP needed)**
+
+Works with any AI assistant (web or desktop):
+- Drag and drop files from `data/input/` into chat
+- Slower for bulk processing
+- Good for testing or processing 1-5 files
+
+---
+
 ## Quick Start
 
-### Prerequisites
+### Step 1: Setup AI Assistant
 
-Before starting, ensure you have:
-- [ ] Claude Desktop installed - [Download](https://claude.ai/download)
-- [ ] Filesystem access configured - [Setup Guide](#installation)
-- [ ] Repository cloned - [Installation](#installation)
+**For Claude Desktop (example):**
 
-### Step 1: Create Claude Project
+1. Create new Project
+2. Add all files from `definitions/` to Project Knowledge
+3. Add Custom Instructions from `docs/CUSTOM_INSTRUCTIONS.md`
 
-1. **Open Claude Desktop → Create new Project**
-2. **Add Project Knowledge:**
-   - Add all files from `definitions/` folder to Project Knowledge
-   - This makes definitions available in every chat
+**For other AI assistants:**
+- Upload agent definitions from `definitions/` folder
+- Set custom instructions (adapt from `docs/CUSTOM_INSTRUCTIONS.md`)
 
-3. **Add Custom Instructions - COPY THIS EXACTLY:**
+### Step 2: Initialize Pipeline
 
-   ```
-   You are the TO-GO Agent Orchestrator v2.0.
-
-   # ROLE ENFORCEMENT
-   You COORDINATE agents. You do NOT execute agent tasks directly.
-
-   # INITIALIZATION (MANDATORY FIRST STEP)
-   Check if task-tracker exists in data/:
-   - IF task-tracker_session_*.json EXISTS:
-     → Load it
-     → Read current_stage and status
-     → Resume from last checkpoint
-     → Report: "Resuming session {id}, Stage {N}, {completed}/{total} files done"
-   
-   - IF NO task-tracker exists:
-     → Create session_id: session_YYYYMMDD_HHMMSS_{random}
-     → Create data/task-tracker_session_{id}.json with structure per task.schema_v2.0.1.json
-     → Initialize: tasks=[], current_stage=null, status="INITIALIZED"
-     → Scan data/input/ for files
-     → Report: "New session {id} created, found {N} files, ready for Stage 1"
-
-   BLOCKING RULE: NO file processing until task-tracker exists and is loaded.
-
-   # PER-FILE PROCESSING (MANDATORY)
-   For EACH file:
-   1. CREATE task entry (status: CREATED)
-   2. UPDATE status: ASSIGNED
-   3. PROCESS file through current stage agent
-   4. WRITE output to data/{stage-id}-{stage-name}/
-   5. UPDATE status: COMPLETED
-   6. VALIDATE output per agent.config validation_rules
-   7. UPDATE status: VALIDATED (or FAILED if validation fails)
-   8. SAVE task-tracker to disk
-   9. Report progress: "File {n}/{total}: {filename} - {status}"
-
-   # STAGE COMPLETION
-   After ALL files in stage:
-   - Count successes/failures
-   - Report: "Stage {N} complete: {success} succeeded, {failed} failed"
-   - IF failed > 0: List failed files with reasons
-   - UPDATE stage_summary in task-tracker
-   - SAVE task-tracker
-   - WAIT for user: APPROVE | REJECT | RETRY_FAILED
-
-   # QUALITY
-   - Schema conformance: 100%
-   - Completeness: ≥98%  
-   - Fidelity: ≥99%
-   - NO emojis, icons, ellipsis, TODO markers
-   - Input isolation: NEVER infer across files
-
-   # DIRECTORIES
-   - Local: {repository-path}
-   - Input: data/input/*.{md,html,pdf}
-   - Outputs: data/{1-5}-{stage}/
-   - READ-ONLY: definitions/
-   - Task tracking: data/task-tracker_session_{id}.json
-
-   # ERROR HANDLING
-   - Max 3 retries per file
-   - Failed files don't block batch
-   - Always save task-tracker before stopping
-   ```
-
-### Step 2: Start or Resume Processing
-
-**In your Claude Project chat, simply copy this ONE command:**
+In your AI assistant chat:
 
 ```
 Load: definitions/orchestrator.agent_v2.0.1.json
 ```
 
-**The orchestrator will automatically:**
-- Check if a task-tracker exists
-- If yes → Resume from last checkpoint
-- If no → Initialize new session, scan files, create tracker
-- Then wait for your command to proceed
+The orchestrator will:
+- Check for existing task-tracker (resume if found)
+- Or initialize new session
+- Scan input directory for files
+- Report status and wait for command
 
 ### Step 3: Prepare Input Files
 
@@ -177,28 +224,50 @@ Create `data/profile.json`:
 }
 ```
 
-If no profile provided, all platform variants are included.
-
 ### Step 4: Process Files
 
-**First time or after approval:**
 ```
 Process all files in data/input/
 ```
 
-**Or continue from where you left off:**
-```
-Continue processing
-```
-
-The orchestrator will:
-- Check task-tracker for current state
-- Resume from last completed file/stage
-- Process remaining files
+The AI assistant will:
+- Load each agent spec from definitions/
+- Execute the agent's work (extraction, indexing, etc.)
+- Write outputs to stage directories
+- Update task-tracker after each file
 - Wait for approval after each stage
-- Output to `data/5-generate/` (final Markdown + JSON)
+- Output finals to `data/5-generate/`
 
 **[See detailed usage patterns →](docs/USAGE.md)**
+
+---
+
+## How It Works
+
+### The Orchestrator Model
+
+```
+User → Load orchestrator.agent_v2.0.1.json
+         ↓
+AI Assistant reads orchestrator spec
+         ↓
+Checks for task-tracker (resume or initialize)
+         ↓
+Scans input files
+         ↓
+FOR EACH STAGE:
+  FOR EACH FILE:
+    Loads agent-{N}-{stage}_v2.0.1.json
+    Reads the agent's instructions
+    Executes instructions (parses, extracts, transforms)
+    Writes output file
+    Updates task-tracker
+  END
+  Waits for user approval
+END
+```
+
+**Key insight:** Agent specs are instructions. The AI assistant reads them and executes the work.
 
 ---
 
@@ -210,10 +279,10 @@ The orchestrator will:
 
 ```
 Chat 1: Processing Stage 2, file 15/35
-        → Browser crash / Token limit / User closes chat
+        → Browser crash / Token limit / Chat closed
 
-Chat 2: [Copy initialization prompt]
-        → Orchestrator loads task-tracker
+Chat 2: [Paste initialization prompt]
+        → Loads task-tracker
         → Reports: "Resuming session {id}, Stage 2, 14/35 complete"
         → "Ready to continue with file 15"
 ```
@@ -222,76 +291,18 @@ Chat 2: [Copy initialization prompt]
 
 ```
 Chat 1: Stage 1 complete → USER GATE
-        → User: "I need to review outputs first"
+        → "I'll review outputs first"
         → Chat ends
 
 [User reviews data/1-extract/ outputs]
 
-Chat 2: [Copy initialization prompt]  
-        → Orchestrator: "Stage 1 complete, waiting for approval"
+Chat 2: [Paste initialization prompt]  
+        → "Stage 1 complete, waiting for approval"
         → User: "APPROVE"
         → Continues to Stage 2
 ```
 
-### Scenario 3: Retry Failed Files
-
-```
-Chat 1: Stage 3 complete: 30 succeeded, 5 failed
-        → User: "RETRY_FAILED"
-        → Retries 5 files
-        → 3 succeed, 2 still fail
-
-Chat 2: [Copy initialization prompt]
-        → Shows: Stage 3, 33/35 complete, 2 failed
-        → User can: APPROVE (skip 2) or RETRY_FAILED again
-```
-
 **Key:** The task-tracker (`data/task-tracker_session_{id}.json`) holds ALL state.
-
----
-
-## Installation
-
-### 1. Clone Repository
-
-```bash
-git clone https://github.com/neomint-research/to-go-agent-tutorial-recycling.git
-cd to-go-agent-tutorial-recycling
-```
-
-### 2. Configure Filesystem Access
-
-**Option 1: Claude Desktop with MCP (Recommended)**
-
-Requirements: [Claude Desktop](https://claude.ai/download) + [Node.js](https://nodejs.org/)
-
-1. Open Claude Desktop Settings → Developer → Edit Config
-2. Add configuration:
-
-   ```json
-   {
-     "mcpServers": {
-       "filesystem": {
-         "command": "npx",
-         "args": [
-           "-y",
-           "@modelcontextprotocol/server-filesystem",
-           "/absolute/path/to/to-go-agent-tutorial-recycling"
-         ]
-       }
-     }
-   }
-   ```
-
-3. Replace `/absolute/path/to/` with your repository path
-4. Restart Claude Desktop
-5. Verify: Look for hammer icon in input box
-
-**Option 2: Docker Desktop MCP Toolkit**
-
-Requirements: [Docker Desktop](https://www.docker.com/products/docker-desktop/) 4.40+ (macOS) or 4.42+ (Windows)
-
-See [Docker MCP Docs](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/) for setup.
 
 ---
 
@@ -299,83 +310,81 @@ See [Docker MCP Docs](https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit
 
 ### Batch Processing
 
-**Process 10 tutorials with approval gates:**
-
 1. Place files in `data/input/`
-2. Load orchestrator (initializes automatically)
+2. Load orchestrator (auto-initializes)
 3. Start: `Process all files in data/input/`
-4. Stage 1 processes all files → Review → `APPROVE`
-5. Stage 2 processes all files → Review → `APPROVE`
+4. Review Stage 1 → `APPROVE`
+5. Review Stage 2 → `APPROVE`
 6. Continue through Stages 3-5
-7. Final outputs in `data/5-generate/`
+7. Finals in `data/5-generate/`
 
 **Benefits:**
 - Review each stage before proceeding
-- Failed files don't block the batch
+- Failed files don't block batch
 - Retry only failed files
 - Resume anytime from task-tracker
 
-**[See more usage patterns →](docs/USAGE.md)**
-
 ### Processing Different Profiles
 
-**Linux users:**
+Run pipeline twice with different profiles:
+
+**Linux:**
 ```json
 {"os": "linux", "experience": "beginner"}
 ```
 
-**Windows users:**
+**Windows:**
 ```json
 {"os": "windows", "experience": "beginner"}
 ```
-
-Run pipeline twice with different profiles for platform-specific tutorials.
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
+### Filesystem Issues
 
-**Filesystem not working?**
-- Verify MCP config has absolute path
-- Restart Claude Desktop
-- Check Node.js installed: `node --version`
+**MCP not working?**
+- Verify Docker Desktop MCP Toolkit is running
+- Check allowed paths configuration
+- Restart AI assistant
+- Try "list files in repository" as test
 
-**Pipeline fails?**
-- Review `data/task-tracker_session_{id}.json`
-- Check for validation errors
-- Verify all 8 files exist in `definitions/`
+**Desktop Commander issues?**
+- Ensure Docker Desktop 4.40+ (macOS) or 4.42+ (Windows)
+- Verify MCP Toolkit enabled in Docker settings
+- Check server logs in Docker Desktop
+
+**Alternative:** Use manual file upload for testing
+
+### Pipeline Issues
+
+**AI says "I cannot execute agents"?**
+- Check custom instructions match `docs/CUSTOM_INSTRUCTIONS.md`
+- Key phrase: "You are BOTH the coordinator AND the executor"
 
 **Want to start fresh?**
-- Rename or delete `data/task-tracker_session_*.json`
-- Next load will create new session
+- Delete `data/task-tracker_session_*.json`
+- Next load creates new session
 
-**Missing dependencies?**
-- Verify files exist:
-  - `orchestrator.agent_v2.0.1.json`
-  - `agent.config_v2.0.1.json`
-  - `task.schema_v2.0.1.json`
-  - `agent-{1-5}-*_v2.0.1.json` (5 files)
-
-**[See complete troubleshooting guide →](docs/TROUBLESHOOTING.md)**
+**[Complete troubleshooting guide →](docs/TROUBLESHOOTING.md)**
 
 ---
 
 ## Understanding the Pipeline
 
-### Why Stage-by-Stage Processing?
+### Why Stage-by-Stage?
 
-**v2.0 Change:** All files → Stage 1 → USER GATE → All files → Stage 2 → USER GATE
+All files → Stage 1 → USER GATE → All files → Stage 2 → USER GATE
 
 **Benefits:**
 1. **Input Isolation** - Each file processed independently
-2. **Quality Gates** - Review and approve after each stage
-3. **Batch Efficiency** - Process many files without manual intervention
+2. **Quality Gates** - Review before proceeding
+3. **Batch Efficiency** - Process many files
 4. **Flexible Retry** - Retry only failed files
-5. **Full Resumability** - Continue from any point via task-tracker
+5. **Full Resumability** - Continue from any point
 
-**[Deep dive into pipeline architecture →](docs/PIPELINE.md)**
+**[Pipeline details →](docs/PIPELINE.md)**
 
 ---
 
@@ -383,33 +392,26 @@ Run pipeline twice with different profiles for platform-specific tutorials.
 
 ### Guides
 
-- **[Pipeline Documentation](docs/PIPELINE.md)** - Deep dive into the 5 stages
-- **[Usage Guide](docs/USAGE.md)** - Common workflows and patterns
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Solutions to common issues
-- **[Development Guide](docs/DEVELOPMENT.md)** - Extending the pipeline
-- **[Complete Reference](docs/REFERENCE.md)** - Detailed specifications
+- **[Pipeline Documentation](docs/PIPELINE.md)** - Deep dive into 5 stages
+- **[Usage Guide](docs/USAGE.md)** - Common workflows
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Solutions
+- **[Development Guide](docs/DEVELOPMENT.md)** - Extending pipeline
+- **[Complete Reference](docs/REFERENCE.md)** - Specifications
+- **[Custom Instructions](docs/CUSTOM_INSTRUCTIONS.md)** - Setup reference
 
 ### Key Topics
 
-**Pipeline Architecture:**
-- [Stage 1: Extract](docs/PIPELINE.md#stage-1-extract) - Parse into chunks/steps
-- [Stage 2: Inventory](docs/PIPELINE.md#stage-2-inventory) - Build indices
-- [Stage 3: Normalize](docs/PIPELINE.md#stage-3-normalize) - Canonical structure
-- [Stage 4: Configure](docs/PIPELINE.md#stage-4-configure) - Profile filtering
-- [Stage 5: Generate](docs/PIPELINE.md#stage-5-generate) - Final outputs
+**Pipeline:**
+- [Extract](docs/PIPELINE.md#stage-1-extract) - Parse to chunks/steps
+- [Inventory](docs/PIPELINE.md#stage-2-inventory) - Build indices
+- [Normalize](docs/PIPELINE.md#stage-3-normalize) - Canonical structure
+- [Configure](docs/PIPELINE.md#stage-4-configure) - Profile filtering
+- [Generate](docs/PIPELINE.md#stage-5-generate) - Final outputs
 
 **Common Tasks:**
-- [Batch Processing](docs/USAGE.md#batch-processing) - Process multiple files
-- [Profile Filtering](docs/USAGE.md#profile-based-filtering) - Platform-specific output
-- [Monitoring Progress](docs/USAGE.md#monitoring-progress) - Track execution
-- [Retry Strategies](docs/USAGE.md#retry-strategies) - Handle failures
-- [Session Management](docs/USAGE.md#session-management) - Resume interrupted work
-
-**Development:**
-- [Adding Custom Agents](docs/DEVELOPMENT.md#adding-a-custom-agent) - Extend pipeline
-- [Naming Conventions](docs/DEVELOPMENT.md#naming-conventions) - File/field naming
-- [Token Management](docs/DEVELOPMENT.md#token-budget-management) - Optimize allocations
-- [Testing](docs/DEVELOPMENT.md#testing-custom-agents) - Validate changes
+- [Batch Processing](docs/USAGE.md#batch-processing)
+- [Profile Filtering](docs/USAGE.md#profile-based-filtering)
+- [Session Management](docs/USAGE.md#session-management)
 
 ---
 
@@ -421,13 +423,14 @@ to-go-agent-tutorial-recycling/
 │   ├── orchestrator.agent_v2.0.1.json ← Entry point
 │   ├── agent.config_v2.0.1.json
 │   ├── task.schema_v2.0.1.json
-│   └── agent-{1-5}-*_v2.0.1.json
+│   └── agent-{1-5}-*_v2.0.1.json      ← Agent specs
 ├── data/                               # I/O operations
-│   ├── input/                          ← Place source files here
+│   ├── input/                          ← Source files
 │   ├── {1-5}-{stage}/                  ← Stage outputs
 │   ├── profile.json (optional)
-│   └── task-tracker_session_{id}.json ← STATE (enables resume)
+│   └── task-tracker_session_{id}.json ← STATE
 ├── docs/                               # Documentation
+│   ├── CUSTOM_INSTRUCTIONS.md
 │   ├── PIPELINE.md
 │   ├── USAGE.md
 │   ├── TROUBLESHOOTING.md
@@ -436,17 +439,15 @@ to-go-agent-tutorial-recycling/
 └── README.md (this file)
 ```
 
-**[See detailed structure reference →](docs/REFERENCE.md#file-structure-reference)**
-
 ---
 
 ## Contributing
 
-We welcome contributions! See the [Development Guide](docs/DEVELOPMENT.md) for:
+See [Development Guide](docs/DEVELOPMENT.md) for:
 - Adding custom agents
 - Extending validation rules
-- Improving documentation
-- Reporting issues
+- Documentation improvements
+- Issue reporting
 
 ---
 
@@ -476,5 +477,5 @@ Built on the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) sp
 
 ---
 
-**Version:** 2.0.1  
+**Version:** 2.0.3  
 **Last Updated:** 2025-10-06
