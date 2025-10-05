@@ -1,0 +1,299 @@
+{
+  "name": "Task Schema",
+  "file": "task.schema_v2.0.0.json",
+  "version": "2.0.1",
+  "date": "2025-10-05",
+  "role": "Defines task structure and status tracking for batch processing with user gates",
+  
+  "task_structure": {
+    "type": "object",
+    "required": ["task_id", "session_id", "batch_id", "stage_id", "agent_id", "input_file", "output_directory", "status", "created_at"],
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "format": "task_{session_id}_{stage_id}_{file_index}",
+        "description": "Unique task identifier for specific file in specific stage"
+      },
+      "session_id": {
+        "type": "string",
+        "format": "session_{YYYYMMDD}_{HHMMSS}_{random}",
+        "description": "Pipeline session identifier"
+      },
+      "batch_id": {
+        "type": "string",
+        "format": "batch_{stage_id}_{session_id}",
+        "description": "Batch identifier for all files in current stage"
+      },
+      "stage_id": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "description": "Pipeline stage number (1=extract, 2=inventory, 3=normalize, 4=configure, 5=generate)"
+      },
+      "agent_id": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "description": "Worker agent assigned to this task"
+      },
+      "input_file": {
+        "type": "string",
+        "description": "Specific input file being processed (with path)"
+      },
+      "input_basename": {
+        "type": "string",
+        "description": "Base name of input file (without extension)"
+      },
+      "output_directory": {
+        "type": "string",
+        "description": "Stage-specific output directory (e.g., data/1-extract/)"
+      },
+      "output_filename": {
+        "type": "string",
+        "description": "Specific output filename generated"
+      },
+      "status": {
+        "type": "string",
+        "enum": ["CREATED", "ASSIGNED", "IN_PROGRESS", "COMPLETED", "FAILED", "VALIDATED", "REJECTED", "RETRY_SCHEDULED", "ABORTED"],
+        "description": "Current task status"
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "ISO 8601 timestamp when task created"
+      },
+      "assigned_at": {
+        "type": ["string", "null"],
+        "format": "date-time"
+      },
+      "completed_at": {
+        "type": ["string", "null"],
+        "format": "date-time"
+      },
+      "validated_at": {
+        "type": ["string", "null"],
+        "format": "date-time"
+      },
+      "input_data": {
+        "type": "object",
+        "description": "Input provided to agent"
+      },
+      "output_data": {
+        "type": ["object", "null"],
+        "description": "Output produced by agent"
+      },
+      "execution_log": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/log_entry"
+        },
+        "description": "Events during task execution"
+      },
+      "validation_result": {
+        "type": ["object", "null"],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": ["ACCEPT", "REJECT"]
+          },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "schema_valid": {"type": "boolean"},
+              "patterns_clean": {"type": "boolean"},
+              "completeness_met": {"type": "boolean"},
+              "fidelity_met": {"type": "boolean"},
+              "input_isolation_met": {"type": "boolean"}
+            }
+          },
+          "failure_reasons": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      },
+      "retry_count": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Number of retries attempted for this file"
+      },
+      "token_usage": {
+        "type": ["integer", "null"],
+        "description": "Tokens consumed by agent for this file"
+      }
+    }
+  },
+  
+  "definitions": {
+    "log_entry": {
+      "type": "object",
+      "required": ["timestamp", "event_type", "description"],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "event_type": {
+          "type": "string",
+          "enum": ["start", "checkpoint", "decision", "warning", "error", "completion", "user_gate"]
+        },
+        "description": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        }
+      }
+    }
+  },
+  
+  "tracker_file_structure": {
+    "type": "object",
+    "required": ["session_id", "pipeline_name", "processing_mode", "started_at", "tasks", "stage_summary"],
+    "properties": {
+      "session_id": {"type": "string"},
+      "pipeline_name": {"type": "string"},
+      "processing_mode": {
+        "type": "string",
+        "const": "BATCH_STAGE_BY_STAGE",
+        "description": "All files through Stage 1, then all through Stage 2, etc."
+      },
+      "input_count": {
+        "type": "integer",
+        "description": "Total number of input files"
+      },
+      "started_at": {"type": "string", "format": "date-time"},
+      "completed_at": {"type": ["string", "null"], "format": "date-time"},
+      "status": {
+        "type": "string",
+        "enum": ["RUNNING", "WAITING_USER_GATE", "SUCCESS", "FAILED", "ABORTED"]
+      },
+      "current_stage": {
+        "type": ["integer", "null"],
+        "minimum": 1,
+        "maximum": 5,
+        "description": "Current stage being processed"
+      },
+      "tasks": {
+        "type": "array",
+        "items": {"$ref": "#/task_structure"},
+        "description": "All tasks (one per file per stage)"
+      },
+      "stage_summary": {
+        "type": "object",
+        "description": "Summary per stage",
+        "properties": {
+          "stage_1": {"$ref": "#/definitions/stage_stats"},
+          "stage_2": {"$ref": "#/definitions/stage_stats"},
+          "stage_3": {"$ref": "#/definitions/stage_stats"},
+          "stage_4": {"$ref": "#/definitions/stage_stats"},
+          "stage_5": {"$ref": "#/definitions/stage_stats"}
+        }
+      },
+      "summary": {
+        "type": "object",
+        "properties": {
+          "total_tasks": {"type": "integer"},
+          "completed": {"type": "integer"},
+          "failed": {"type": "integer"},
+          "retries": {"type": "integer"}
+        }
+      }
+    }
+  },
+  
+  "definitions": {
+    "stage_stats": {
+      "type": "object",
+      "properties": {
+        "stage_id": {"type": "integer"},
+        "stage_name": {"type": "string"},
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "IN_PROGRESS", "COMPLETED", "WAITING_USER_GATE", "FAILED"]
+        },
+        "files_processed": {"type": "integer"},
+        "files_succeeded": {"type": "integer"},
+        "files_failed": {"type": "integer"},
+        "user_gate_status": {
+          "type": ["string", "null"],
+          "enum": ["APPROVED", "REJECTED", "RETRY_FAILED", null]
+        },
+        "started_at": {"type": ["string", "null"], "format": "date-time"},
+        "completed_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    }
+  },
+  
+  "status_transitions": {
+    "allowed": {
+      "CREATED": ["ASSIGNED"],
+      "ASSIGNED": ["IN_PROGRESS"],
+      "IN_PROGRESS": ["COMPLETED", "FAILED"],
+      "COMPLETED": ["VALIDATED", "REJECTED"],
+      "VALIDATED": [],
+      "REJECTED": ["RETRY_SCHEDULED", "ABORTED"],
+      "RETRY_SCHEDULED": ["ASSIGNED"],
+      "FAILED": ["RETRY_SCHEDULED", "ABORTED"],
+      "ABORTED": []
+    }
+  },
+  
+  "example_task": {
+    "task_id": "task_session_20251005_100000_abc123_1_tutorial-1",
+    "session_id": "session_20251005_100000_abc123",
+    "batch_id": "batch_1_session_20251005_100000_abc123",
+    "stage_id": 1,
+    "agent_id": 1,
+    "input_file": "data/input/tutorial-1.md",
+    "input_basename": "tutorial-1",
+    "output_directory": "data/1-extract/",
+    "output_filename": "tutorial-1_extract.json",
+    "status": "VALIDATED",
+    "created_at": "2025-10-05T10:00:00Z",
+    "assigned_at": "2025-10-05T10:00:01Z",
+    "completed_at": "2025-10-05T10:05:30Z",
+    "validated_at": "2025-10-05T10:06:00Z",
+    "input_data": {
+      "raw_source": {"kind": "markdown", "content": "..."},
+      "policy_flags": {"rights_confirmed": true}
+    },
+    "output_data": {
+      "chunks": [],
+      "steps": [],
+      "entities": []
+    },
+    "execution_log": [
+      {
+        "timestamp": "2025-10-05T10:00:01Z",
+        "event_type": "start",
+        "description": "Agent 1 started extraction for tutorial-1.md"
+      },
+      {
+        "timestamp": "2025-10-05T10:02:30Z",
+        "event_type": "checkpoint",
+        "description": "Processed 50 chunks",
+        "severity": "low"
+      },
+      {
+        "timestamp": "2025-10-05T10:05:30Z",
+        "event_type": "completion",
+        "description": "Extraction complete: 127 chunks, 34 steps"
+      }
+    ],
+    "validation_result": {
+      "decision": "ACCEPT",
+      "checks": {
+        "schema_valid": true,
+        "patterns_clean": true,
+        "completeness_met": true,
+        "fidelity_met": true,
+        "input_isolation_met": true
+      },
+      "failure_reasons": []
+    },
+    "retry_count": 0,
+    "token_usage": 25000
+  }
+}

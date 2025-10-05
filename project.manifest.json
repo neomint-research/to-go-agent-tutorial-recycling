@@ -1,0 +1,182 @@
+{
+  "name": "TO-GO Agent: Tutorial Recycling",
+  "version": "2.0.1",
+  "description": "Agentic pipeline for processing tutorials into standardized formats",
+  "repository": "https://github.com/neomint-research/to-go-agent-tutorial-recycling",
+  "copyright": "MINT-RESEARCH by NeoMINT GmbH 2025",
+  "license": "MIT",
+  "contact": "research@neomint.com",
+  
+  "required_structure": {
+    "description": "This manifest defines the EXACT allowed structure. Files/directories not listed here are violations.",
+    "enforcement": "STRICT",
+    
+    "root_files": {
+      "required": [
+        "README.md",
+        "LICENSE",
+        ".gitignore",
+        "project.manifest.json"
+      ],
+      "forbidden": [
+        "Any .json files in root (must be in definitions/)",
+        "Any working files (must be in data/ or temp/)"
+      ]
+    },
+    
+    "root_directories": {
+      "required": [
+        "definitions",
+        "data",
+        "temp",
+        "docs"
+      ],
+      "forbidden": [
+        "Any other directories"
+      ]
+    },
+    
+    "definitions_directory": {
+      "path": "definitions/",
+      "description": "Agent definitions and schemas - IMMUTABLE during runtime",
+      "required_files": [
+        "orchestrator.agent_v2.0.0.json",
+        "agent.config_v2.0.0.json",
+        "task.schema_v2.0.0.json",
+        "agent-1-extract_v2.0.0.json",
+        "agent-2-inventory_v2.0.0.json",
+        "agent-3-normalize_v2.0.0.json",
+        "agent-4-configure_v2.0.0.json",
+        "agent-5-generate_v2.0.0.json"
+      ],
+      "allowed_files": [
+        "Files matching pattern: *.json with semantic versioning"
+      ],
+      "forbidden": [
+        "Any subdirectories",
+        "Any non-JSON files",
+        "Any files without version suffix"
+      ]
+    },
+    
+    "data_directory": {
+      "path": "data/",
+      "description": "Working directory for pipeline inputs and outputs - READ/WRITE",
+      "required_subdirectories": [
+        "input",
+        "1-extract",
+        "2-inventory",
+        "3-normalize",
+        "4-configure",
+        "5-generate"
+      ],
+      "allowed_patterns": [
+        "input/*.md",
+        "input/*.html",
+        "input/*.pdf",
+        "1-extract/*_extract.json",
+        "2-inventory/*_inventory.json",
+        "3-normalize/*_normalize.json",
+        "4-configure/*_configure.json",
+        "5-generate/*.md",
+        "5-generate/*.json",
+        "task-tracker_*.json",
+        "profile.json"
+      ],
+      "required_files": [
+        ".gitkeep"
+      ],
+      "git_tracked": false,
+      "note": "Contents are gitignored except .gitkeep. Stage outputs go to numbered subdirectories."
+    },
+    
+    "temp_directory": {
+      "path": "temp/",
+      "description": "Ephemeral logs and debugging - READ/WRITE",
+      "allowed_patterns": [
+        "*.log",
+        "*.txt",
+        "*.md (documentation only)"
+      ],
+      "required_files": [
+        ".gitkeep"
+      ],
+      "git_tracked": false,
+      "note": "Contents are gitignored except .gitkeep"
+    },
+    
+    "docs_directory": {
+      "path": "docs/",
+      "description": "Documentation files - READ-ONLY during runtime",
+      "required_files": [
+        "PIPELINE.md",
+        "USAGE.md",
+        "TROUBLESHOOTING.md",
+        "DEVELOPMENT.md",
+        "REFERENCE.md"
+      ],
+      "allowed_patterns": [
+        "*.md"
+      ],
+      "git_tracked": true,
+      "note": "Documentation structure for GitHub navigation"
+    }
+  },
+  
+  "validation_rules": {
+    "on_violation": "Move violating files to temp/ for review",
+    "check_frequency": "On initialization, before/after file operations",
+    "enforcement_level": "STRICT"
+  },
+  
+  "enforcement_rules": [
+    "NEVER modify files in definitions directory (definitions/) during runtime",
+    "NEVER create new files in definitions directory during runtime",
+    "ALWAYS write pipeline outputs to data/{stage-id}-{stage-name}/",
+    "ALWAYS write task trackers to data/",
+    "Input files must be in data/input/",
+    "Optionally write logs and debug info to temp/",
+    "Definitions are immutable at runtime"
+  ],
+  
+  "file_naming_conventions": {
+    "directories": "lowercase_with_underscores (follows open source conventions)",
+    "agents": "agent-{id}-{name}_v{major}.{minor}.{patch}.json",
+    "schemas": "{name}.schema_v{major}.{minor}.{patch}.json",
+    "configs": "{name}.config_v{major}.{minor}.{patch}.json",
+    "stage_outputs": "{input_basename}_{stage_name}.json",
+    "final_outputs": "{input_basename}.md and {input_basename}.json"
+  },
+  
+  "changelog": [
+    {
+      "version": "2.0.1",
+      "date": "2025-10-05",
+      "changes": [
+        "Changed: All directory names to lowercase (open source conventions)",
+        "Changed: definitions/ (was TO-GO-AGENT_TUTORIAL-RECYCLING/)",
+        "Changed: data/ (was DATA/)",
+        "Changed: temp/ (was TEMP/)",
+        "Changed: data/input/ (was DATA/Input/)",
+        "Added: docs/ directory for documentation structure",
+        "Updated: All path references throughout manifest",
+        "Note: Follows standard open source naming conventions"
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2025-10-05",
+      "changes": [
+        "BREAKING: Stage-by-stage batch processing (all files through Stage 1, then Stage 2, etc.)",
+        "BREAKING: Output structure changed to data/{N}-{stage}/ directories",
+        "BREAKING: User gates required between stages for approval",
+        "BREAKING: Input must be in data/input/ (not root or temp/)",
+        "Added: Batch processing - no cross-contamination between inputs",
+        "Added: User gates after each stage for review and approval",
+        "Added: Stage-isolated output directories for clear separation",
+        "Enhanced: File naming convention with input basename preservation",
+        "Migration: Move input files to data/input/, update workflows"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+# .gitignore
+
+# Data directory - working files
+data/*
+!data/.gitkeep
+!data/input/
+data/input/*
+!data/input/.gitkeep
+!data/1-extract/
+!data/2-inventory/
+!data/3-normalize/
+!data/4-configure/
+!data/5-generate/
+
+# Temp directory - only structure tracked
+temp/*
+!temp/.gitkeep
+!temp/README.md
+!temp/archive/
+temp/archive/*
+!temp/archive/.gitkeep
+!temp/logs/
+temp/logs/*
+!temp/logs/.gitkeep
+!temp/prompts/
+temp/prompts/*
+!temp/prompts/.gitkeep
+!temp/scratch/
+temp/scratch/*
+!temp/scratch/.gitkeep
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Logs
+*.log
+logs/
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Test coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Misc
+.env
+.env.local
+.env.*.local

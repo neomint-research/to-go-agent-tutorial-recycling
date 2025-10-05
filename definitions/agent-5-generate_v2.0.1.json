@@ -1,0 +1,50 @@
+{
+  "agent_id": 5,
+  "name": "Generate",
+  "file": "agent-5-generate_v2.0.0.json",
+  "version": "2.0.1",
+  "role": "Emit final Markdown and JSON outputs",
+  
+  "task_reception": {
+    "from_orchestrator": "Receives task object with step-4_configure.json",
+    "validates": "Configured status = VALIDATED"
+  },
+  
+  "execution": {
+    "markdown_format": {
+      "line_endings": "LF",
+      "heading_style": "ATX (# ## ###)",
+      "indentation": "2 spaces for lists",
+      "code_blocks": "Fenced (```) with language",
+      "steps": "## Step {N}: {heading}",
+      "numbering": "Contiguous 1..N"
+    },
+    "section_order": ["Title", "Overview", "Prerequisites", "Materials", "Setup", "Steps", "Validation", "Troubleshooting", "References"],
+    "outputs": {
+      "tutorial.md": "Formatted Markdown",
+      "tutorial.json": "JSON mirror of markdown content"
+    },
+    "fidelity": "Code verbatim, NO emojis/icons, NO trailing spaces"
+  },
+  
+  "result_submission": {
+    "to_orchestrator": "Returns task object with output_data",
+    "output_structure": {
+      "tutorial_md": "String content of tutorial.md",
+      "tutorial_json": "Object content of tutorial.json"
+    }
+  },
+  
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2025-10-05",
+      "changes": [
+        "Updated for batch processing mode",
+        "Output location changed to data/{stage-id}-{stage-name}/",
+        "Input isolation enforced - no cross-file references",
+        "Compatible with orchestrator.agent_v2.0.0.json"
+      ]
+    }
+  ]
+}

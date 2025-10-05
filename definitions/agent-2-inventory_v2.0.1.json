@@ -1,0 +1,46 @@
+{
+  "agent_id": 2,
+  "name": "Inventory",
+  "file": "agent-2-inventory_v2.0.0.json",
+  "version": "2.0.1",
+  "role": "Build indices and mappings from extraction",
+  
+  "task_reception": {
+    "from_orchestrator": "Receives task object with step-1_extract.json",
+    "validates": "Extraction status = VALIDATED"
+  },
+  
+  "execution": {
+    "indices": {
+      "categories": ["entities", "tools", "files", "commands", "datasets"],
+      "source": "extraction.chunks and extraction.steps",
+      "sorting": "Alphabetical case-insensitive",
+      "all_items_have": "source_refs"
+    },
+    "mappings": {
+      "chunk_to_step": "Map each chunk in steps[].source_refs",
+      "deduplications": "canonical + aliases for variants"
+    }
+  },
+  
+  "result_submission": {
+    "to_orchestrator": "Returns task object with output_data",
+    "output_structure": {
+      "indices": "object with 5 category arrays",
+      "mappings": "object with chunk_to_step and deduplications"
+    }
+  },
+  
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2025-10-05",
+      "changes": [
+        "Updated for batch processing mode",
+        "Output location changed to data/{stage-id}-{stage-name}/",
+        "Input isolation enforced - no cross-file references",
+        "Compatible with orchestrator.agent_v2.0.0.json"
+      ]
+    }
+  ]
+}

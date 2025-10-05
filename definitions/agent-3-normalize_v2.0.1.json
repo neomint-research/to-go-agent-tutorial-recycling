@@ -1,0 +1,41 @@
+{
+  "agent_id": 3,
+  "name": "Normalize",
+  "file": "agent-3-normalize_v2.0.0.json",
+  "version": "2.0.1",
+  "role": "Map inventory to canonical skeleton structure",
+  
+  "task_reception": {
+    "from_orchestrator": "Receives task object with step-2_inventory.json",
+    "validates": "Inventory status = VALIDATED"
+  },
+  
+  "execution": {
+    "skeleton": {
+      "section_order": ["overview", "prerequisites", "setup", "steps", "validation", "troubleshooting", "references"],
+      "fixed": "All sections present even if empty/null",
+      "step_id_format": "s{:03d}",
+      "ordering": "By ordinal ascending, ties by source order"
+    }
+  },
+  
+  "result_submission": {
+    "to_orchestrator": "Returns task object with output_data",
+    "output_structure": {
+      "skeleton": "object with fixed section order"
+    }
+  },
+  
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2025-10-05",
+      "changes": [
+        "Updated for batch processing mode",
+        "Output location changed to data/{stage-id}-{stage-name}/",
+        "Input isolation enforced - no cross-file references",
+        "Compatible with orchestrator.agent_v2.0.0.json"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "agent_id": 4,
+  "name": "Configure",
+  "file": "agent-4-configure_v2.0.0.json",
+  "version": "2.0.1",
+  "role": "Filter skeleton by user profile",
+  
+  "task_reception": {
+    "from_orchestrator": "Receives task object with step-3_normalize.json + profile",
+    "validates": "Normalized status = VALIDATED"
+  },
+  
+  "execution": {
+    "profile_fields": {
+      "os": ["linux", "windows", "macos", null],
+      "experience": ["beginner", "intermediate", "advanced", null],
+      "hardware": ["cpu", "gpu", null],
+      "language": "string or null"
+    },
+    "variant_detection": {
+      "explicit_tags": ["[linux]", "[windows]", "[macos]", "[cpu]", "[gpu]"],
+      "heuristics": "OS/hardware keywords in content",
+      "precedence": "Explicit > heuristics > generic"
+    },
+    "selection": {
+      "filters": ["OS", "Hardware", "Experience"],
+      "exclusions": "Document every excluded item with reason"
+    }
+  },
+  
+  "result_submission": {
+    "to_orchestrator": "Returns task object with output_data",
+    "output_structure": {
+      "selected_content": "Filtered skeleton",
+      "exclusions": "Array of excluded items with reasons"
+    }
+  },
+  
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2025-10-05",
+      "changes": [
+        "Updated for batch processing mode",
+        "Output location changed to data/{stage-id}-{stage-name}/",
+        "Input isolation enforced - no cross-file references",
+        "Compatible with orchestrator.agent_v2.0.0.json"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "agent_id": 1,
+  "name": "Extract",
+  "file": "agent-1-extract_v2.0.0.json",
+  "version": "2.0.1",
+  "role": "Parse source into atomic chunks and extract steps",
+  
+  "task_reception": {
+    "from_orchestrator": "Receives task object with raw_source and policy_flags",
+    "validates": "policy_flags.rights_confirmed = true"
+  },
+  
+  "execution": {
+    "chunking": {
+      "rule": "EVERY source element becomes exactly ONE chunk",
+      "kinds": ["paragraph", "code", "heading", "table", "image", "callout"],
+      "id_format": "chunk_{:03d}",
+      "never_split": "code blocks, tables"
+    },
+    "step_extraction": {
+      "source": "Imperatives only (Install, Configure, Run, Verify, Create, etc)",
+      "id_format": "step_{:03d}",
+      "required": ["id", "ordinal", "title", "action", "source_refs (min 1)"]
+    },
+    "entities": {
+      "extract_from": "All chunks",
+      "types": ["tools", "packages", "files", "datasets", "products"]
+    },
+    "fidelity": "Code 100% verbatim, null + uncertainty_note for missing values"
+  },
+  
+  "result_submission": {
+    "to_orchestrator": "Returns task object with output_data populated",
+    "output_structure": {
+      "chunks": "array of chunk objects",
+      "steps": "array of step objects",
+      "entities": "array of entity strings",
+      "references": "array of URL strings"
+    }
+  },
+  
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2025-10-05",
+      "changes": [
+        "Updated for batch processing mode",
+        "Output location changed to data/{stage-id}-{stage-name}/",
+        "Input isolation enforced - no cross-file references",
+        "Compatible with orchestrator.agent_v2.0.0.json"
+      ]
+    }
+  ]
+}

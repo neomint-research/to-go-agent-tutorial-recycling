@@ -1,0 +1,449 @@
+{
+  "name": "Orchestrator Agent",
+  "file": "orchestrator.agent_v2.0.0.json",
+  "version": "2.0.1",
+  "date": "2025-10-05",
+  "role": "Central controller for TO-GO Agent Tutorial Recycling - batch processing with user gates",
+  
+  "entry_point": true,
+  "description": "This is THE entry point. User loads ONLY this file. Orchestrator loads everything else and runs stage-by-stage batch processing with user approval gates.",
+  
+  "directory_structure": {
+    "source_of_truth": "project.manifest.json::required_structure",
+    "repository_root": "to-go-agent-tutorial-recycling/",
+    "runtime_locations": {
+      "definitions_directory": "definitions/ (READ-ONLY)",
+      "working_directory": "data/ (READ/WRITE)",
+      "input_directory": "data/input/ (READ-ONLY during processing)",
+      "stage_directories": "data/{1-5}-{stage-name}/ (WRITE per stage)",
+      "logs_directory": "temp/ (READ/WRITE, ephemeral)"
+    },
+    "enforcement_rules": [
+      "NEVER modify files in definitions directory during runtime",
+      "NEVER create new files in definitions directory",
+      "ALWAYS read inputs from data/input/",
+      "ALWAYS write stage outputs to data/{stage-id}-{stage-name}/",
+      "ALWAYS write task tracker to data/",
+      "Optionally write logs to temp/",
+      "Structure validation enforced per project.manifest.json"
+    ]
+  },
+  
+  "self_loading": {
+    "enabled": true,
+    "instruction": "Upon loading, automatically load dependencies from definitions directory and enter control loop",
+    "dependencies": [
+      {
+        "file": "agent.config_v2.0.1.json",
+        "required": true,
+        "location": "definitions",
+        "access": "read-only",
+        "purpose": "Agent definitions and validation rules"
+      },
+      {
+        "file": "task.schema_v2.0.1.json",
+        "required": true,
+        "location": "definitions",
+        "access": "read-only",
+        "purpose": "Task structure and status tracking schema"
+      }
+    ]
+  },
+  
+  "pipeline_definition": {
+    "name": "Tutorial Processing Pipeline",
+    "processing_mode": "BATCH_STAGE_BY_STAGE",
+    "description": "All inputs processed through Stage 1, then all through Stage 2, etc.",
+    "stages": [
+      {
+        "stage_id": 1,
+        "name": "extract",
+        "agent_id": 1,
+        "description": "Parse source into structured chunks and steps",
+        "input_source": "data/input/*.{md,html,pdf}",
+        "output_location": "data/1-extract/",
+        "output_pattern": "{input_basename}_extract.json",
+        "validation_contract": "agent.config::agents[0].validation_rules",
+        "user_gate": "Review extraction results before inventory"
+      },
+      {
+        "stage_id": 2,
+        "name": "inventory",
+        "agent_id": 2,
+        "description": "Build indices and mappings from extraction",
+        "input_source": "data/1-extract/*_extract.json",
+        "output_location": "data/2-inventory/",
+        "output_pattern": "{input_basename}_inventory.json",
+        "validation_contract": "agent.config::agents[1].validation_rules",
+        "user_gate": "Review inventory results before normalization"
+      },
+      {
+        "stage_id": 3,
+        "name": "normalize",
+        "agent_id": 3,
+        "description": "Map to canonical skeleton structure",
+        "input_source": "data/2-inventory/*_inventory.json",
+        "output_location": "data/3-normalize/",
+        "output_pattern": "{input_basename}_normalize.json",
+        "validation_contract": "agent.config::agents[2].validation_rules",
+        "user_gate": "Review normalization results before configuration"
+      },
+      {
+        "stage_id": 4,
+        "name": "configure",
+        "agent_id": 4,
+        "description": "Filter by user profile",
+        "input_source": "data/3-normalize/*_normalize.json",
+        "additional_input": "data/profile.json (optional)",
+        "output_location": "data/4-configure/",
+        "output_pattern": "{input_basename}_configure.json",
+        "validation_contract": "agent.config::agents[3].validation_rules",
+        "user_gate": "Review configuration results before generation"
+      },
+      {
+        "stage_id": 5,
+        "name": "generate",
+        "agent_id": 5,
+        "description": "Emit final Markdown and JSON",
+        "input_source": "data/4-configure/*_configure.json",
+        "output_location": "data/5-generate/",
+        "output_pattern": "{input_basename}.md and {input_basename}.json",
+        "validation_contract": "agent.config::agents[4].validation_rules",
+        "user_gate": "Review final outputs - pipeline complete"
+      }
+    ]
+  },
+  
+  "control_loop": {
+    "algorithm": "Stage-by-stage batch processing with user gates",
+    "phases": [
+      {
+        "phase": "initialization",
+        "steps": [
+          "CHECK: Repository structure integrity (per project.manifest.json)",
+          "CREATE: Stage directories if missing (data/1-extract/ through data/5-generate/)",
+          "VERIFY: data/input/ exists and contains files",
+          "Load agent.config and task.schema from definitions/ (read-only)",
+          "Validate all agent definitions present",
+          "Scan data/input/ for all processable files (*.md, *.html, *.pdf)",
+          "Create session_id",
+          "Initialize task tracker in data/",
+          "Load profile from data/profile.json if exists",
+          "Report: Found {N} input files, ready to process stage-by-stage"
+        ]
+      },
+      {
+        "phase": "stage_execution",
+        "description": "Execute each stage for ALL inputs before proceeding to next stage",
+        "pseudocode": [
+          "FOR each stage in pipeline_definition.stages:",
+          "  REPORT: Starting Stage {stage_id} ({stage_name}) for {file_count} files",
+          "  ",
+          "  FOR each input_file in current_stage_input_source:",
+          "    CREATE task entry in task-tracker (status=CREATED)",
+          "    ASSIGN task to agent[stage.agent_id] (status=ASSIGNED)",
+          "    EXECUTE agent with:",
+          "      - input_file path",
+          "      - output_directory: stage.output_location",
+          "      - output_filename: stage.output_pattern (with input_basename)",
+          "      - profile (if stage 4)",
+          "      - session_id",
+          "    RECEIVE result from agent",
+          "    WRITE output to {output_location}/{output_filename}",
+          "    UPDATE task-tracker (status=COMPLETED or FAILED)",
+          "    VALIDATE result against validation_contract",
+          "    IF validation PASSED:",
+          "      UPDATE task-tracker (status=VALIDATED)",
+          "    ELSE:",
+          "      IF retry_count < max_retries:",
+          "        INCREMENT retry_count",
+          "        RETRY this file for current stage",
+          "      ELSE:",
+          "        MARK task as FAILED",
+          "        CONTINUE to next file (don't abort entire stage)",
+          "  END FOR",
+          "  ",
+          "  REPORT: Stage {stage_id} complete",
+          "  REPORT: {success_count} succeeded, {failed_count} failed",
+          "  IF failed_count > 0:",
+          "    LIST failed files with reasons",
+          "  ",
+          "  USER_GATE:",
+          "    PROMPT: Stage {stage_id} ({stage_name}) completed for {file_count} files.",
+          "    PROMPT: Review outputs in {output_location}",
+          "    PROMPT: {stage.user_gate}",
+          "    OPTIONS: [APPROVE, REJECT, RETRY_FAILED]",
+          "    ",
+          "    IF user_choice == APPROVE:",
+          "      CONTINUE to next stage",
+          "    ELSE IF user_choice == REJECT:",
+          "      ABORT pipeline",
+          "      WRITE error report to data/",
+          "      EXIT",
+          "    ELSE IF user_choice == RETRY_FAILED:",
+          "      RETRY only failed files",
+          "      WAIT for USER_GATE again",
+          "END FOR"
+        ]
+      },
+      {
+        "phase": "completion",
+        "steps": [
+          "All stages completed and validated",
+          "Write final task tracker to data/",
+          "Generate pipeline completion report",
+          "REPORT: Pipeline SUCCESS",
+          "REPORT: Processed {input_count} files through 5 stages",
+          "REPORT: Final outputs in data/5-generate/",
+          "CHECK: Structure integrity (final check per manifest)",
+          "Optionally write execution log to temp/",
+          "Status: SUCCESS"
+        ]
+      }
+    ]
+  },
+  
+  "batch_processing": {
+    "mode": "STAGE_BY_STAGE",
+    "description": "All files through current stage before advancing to next stage",
+    "input_isolation": {
+      "rule": "Each input file processed independently",
+      "enforcement": "Agent MUST NOT infer properties from other inputs",
+      "validation": "Agent outputs reviewed for cross-contamination"
+    },
+    "file_naming": {
+      "preserve_basename": true,
+      "pattern": "{input_basename}_{stage_name}.{ext}",
+      "example": "tutorial-1.md -> tutorial-1_extract.json -> tutorial-1_inventory.json -> ... -> tutorial-1.md"
+    }
+  },
+  
+  "user_gates": {
+    "enabled": true,
+    "description": "Human approval required between stages",
+    "trigger": "AFTER_EACH_STAGE",
+    "prompt_template": "Stage {N} ({stage_name}) completed for {file_count} files. Review outputs in data/{N}-{stage_name}/. {user_gate_message}. Approve to continue?",
+    "options": {
+      "APPROVE": {
+        "action": "Proceed to next stage",
+        "description": "Continue pipeline execution"
+      },
+      "REJECT": {
+        "action": "Abort pipeline immediately",
+        "description": "Stop processing, write error report"
+      },
+      "RETRY_FAILED": {
+        "action": "Re-run failed files only",
+        "description": "Retry files that failed validation, then re-prompt"
+      }
+    },
+    "reporting": {
+      "success_count": "Number of files successfully processed",
+      "failed_count": "Number of files that failed",
+      "failed_files": "List of failed files with reasons",
+      "output_location": "Directory where outputs were written"
+    }
+  },
+  
+  "task_assignment": {
+    "mechanism": "Orchestrator identifies agent_id from stage, loads agent spec from definitions/, executes for each input file",
+    "communication": {
+      "to_agent": {
+        "task_id": "Unique task identifier",
+        "batch_id": "Stage batch identifier",
+        "stage_id": "Pipeline stage number",
+        "input_file": "Specific file being processed",
+        "input_data": "File contents or reference",
+        "output_directory": "Where to write output",
+        "output_filename": "Specific output filename with input basename",
+        "profile": "User profile (Stage 4 only)",
+        "validation_contract": "Schema and rules for validation",
+        "session_id": "Session identifier for tracking"
+      },
+      "from_agent": {
+        "task_id": "Echo of assigned task",
+        "status": "COMPLETED or FAILED",
+        "output_data": "Produced output per contract",
+        "output_written_to": "data/{stage-dir}/{filename}",
+        "execution_log": "Events and decisions during execution",
+        "token_usage": "Tokens consumed"
+      }
+    }
+  },
+  
+  "validation": {
+    "mandatory_checks": [
+      "Schema validation (output matches contract)",
+      "Forbidden patterns (including NO emojis/icons)",
+      "Completeness >= 0.98",
+      "Fidelity >= 0.99",
+      "All required fields present",
+      "All null values have uncertainty_notes",
+      "No cross-contamination (input isolation maintained)"
+    ],
+    "validation_process": [
+      "1. Load validation_contract from agent.config",
+      "2. Load agent output from data/{stage-dir}/{filename}",
+      "3. Run schema validator on agent output",
+      "4. Run forbidden pattern regex scan",
+      "5. Compute quality metrics",
+      "6. Compare against thresholds",
+      "7. Check for cross-contamination indicators",
+      "8. Decision: ACCEPT or REJECT",
+      "9. Update task-tracker with validation result"
+    ],
+    "on_reject": {
+      "log_failure_reason": "Document what failed in task-tracker",
+      "increment_retry_count": true,
+      "re_run_file": "if retry_count < max_retries",
+      "mark_failed": "if retry_count >= max_retries (but continue with other files)"
+    }
+  },
+  
+  "retry_policy": {
+    "max_retries": 3,
+    "scope": "PER_FILE (failed file retried, not entire batch)",
+    "retry_conditions": [
+      "Validation failed (schema, patterns, quality)",
+      "Agent reported FAILED status",
+      "Token overflow (CONTINUATION_REQUIRED)"
+    ],
+    "no_retry_conditions": [
+      "Input contract violation (bad input data)",
+      "Agent definition not found",
+      "Critical system error",
+      "Structure integrity violation"
+    ],
+    "behavior": {
+      "on_retry": "Re-run only this file, continue with others",
+      "on_max_retries": "Mark file as FAILED, continue with batch",
+      "on_user_retry": "Re-run all failed files when user chooses RETRY_FAILED"
+    }
+  },
+  
+  "session_management": {
+    "session_id_format": "session_{YYYYMMDD}_{HHMMSS}_{random}",
+    "task_tracker_file": "data/task-tracker_session_{session_id}.json",
+    "stage_outputs": {
+      "stage_1": "data/1-extract/{basename}_extract.json",
+      "stage_2": "data/2-inventory/{basename}_inventory.json",
+      "stage_3": "data/3-normalize/{basename}_normalize.json",
+      "stage_4": "data/4-configure/{basename}_configure.json",
+      "stage_5": "data/5-generate/{basename}.md and {basename}.json"
+    },
+    "logs": "temp/execution_log_{timestamp}.txt (optional)",
+    "persistence": "Write task tracker to data/ after each file completion"
+  },
+  
+  "error_handling": {
+    "categories": {
+      "structure_integrity_violation": {
+        "action": "ABORT immediately",
+        "severity": "CRITICAL",
+        "log_to": "data/task-tracker + temp/error-report.json",
+        "message": "Unauthorized files or structure violation detected (see project.manifest.json)"
+      },
+      "validation_failure": {
+        "action": "Retry file if under max_retries, else mark FAILED and continue",
+        "severity": "HIGH",
+        "log_to": "data/task-tracker"
+      },
+      "agent_failure": {
+        "action": "Retry file if under max_retries, else mark FAILED and continue",
+        "severity": "HIGH",
+        "log_to": "data/task-tracker"
+      },
+      "input_error": {
+        "action": "Skip file, mark FAILED, continue with others",
+        "severity": "HIGH",
+        "log_to": "data/task-tracker + data/error-report.json"
+      },
+      "system_error": {
+        "action": "ABORT immediately",
+        "severity": "CRITICAL",
+        "log_to": "data/task-tracker + data/error-report.json"
+      }
+    },
+    "abort_procedure": [
+      "Mark current stage as ABORTED",
+      "Write task tracker to data/ with all completed tasks",
+      "Generate error report in data/",
+      "Optionally write debug info to temp/",
+      "Exit with status FAILED"
+    ]
+  },
+  
+  "completion_criteria": {
+    "success": "All stages completed for all files (or marked FAILED), structure integrity maintained",
+    "output_structure": {
+      "task_tracker": "data/task-tracker_session_{id}.json",
+      "stage_1_outputs": "data/1-extract/*.json",
+      "stage_2_outputs": "data/2-inventory/*.json",
+      "stage_3_outputs": "data/3-normalize/*.json",
+      "stage_4_outputs": "data/4-configure/*.json",
+      "stage_5_outputs": "data/5-generate/*.md and *.json"
+    }
+  },
+  
+  "usage": {
+    "entry_command": "Load: definitions/orchestrator.agent_v2.0.0.json",
+    "orchestrator_executes": [
+      "Check repository structure integrity",
+      "Create stage directories if missing",
+      "Scan data/input/ for all files",
+      "Self-loads dependencies from definitions/",
+      "Processes stage-by-stage:",
+      "  - Stage 1 for ALL files",
+      "  - USER GATE (review, approve)",
+      "  - Stage 2 for ALL files",
+      "  - USER GATE (review, approve)",
+      "  - Stage 3 for ALL files",
+      "  - USER GATE (review, approve)",
+      "  - Stage 4 for ALL files",
+      "  - USER GATE (review, approve)",
+      "  - Stage 5 for ALL files",
+      "  - USER GATE (review, complete)",
+      "Writes outputs to stage directories",
+      "Validates each result",
+      "Updates task-tracker after each file",
+      "Handles retries per-file",
+      "Reports success/failures after each stage",
+      "Final structure integrity check"
+    ],
+    "user_intervention": "REQUIRED at user gates between stages"
+  },
+  
+  "changelog": [
+    {
+      "version": "2.0.1",
+      "date": "2025-10-05",
+      "changes": [
+        "Changed: All directory references to lowercase",
+        "Changed: definitions/ (was TO-GO-AGENT_TUTORIAL-RECYCLING/)",
+        "Changed: data/ (was DATA/)",
+        "Changed: temp/ (was TEMP/)",
+        "Updated: All path references throughout document",
+        "Note: Follows open source naming conventions"
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2025-10-05",
+      "changes": [
+        "BREAKING: Changed from file-by-file to stage-by-stage batch processing",
+        "BREAKING: All files through Stage 1, then all through Stage 2, etc.",
+        "BREAKING: Added user gates between stages for review and approval",
+        "BREAKING: Output structure changed to data/{1-5}-{stage}/ directories",
+        "BREAKING: Input must be in data/input/ (not temp/ or root)",
+        "Added: Batch processing with input isolation (no cross-contamination)",
+        "Added: User gate system with APPROVE/REJECT/RETRY_FAILED options",
+        "Added: Per-file retry logic (failed files don't abort entire batch)",
+        "Added: Stage directories auto-creation on initialization",
+        "Added: Basename preservation across pipeline stages",
+        "Enhanced: Task tracker with batch_id and input_file fields",
+        "Enhanced: Reporting after each stage (success/fail counts)",
+        "Migration: Move inputs to data/input/, workflows require user gates"
+      ]
+    }
+  ]
+}

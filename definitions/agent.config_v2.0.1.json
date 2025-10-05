@@ -1,0 +1,255 @@
+{
+  "name": "Agent Configuration",
+  "file": "agent.config_v2.0.1.json",
+  "version": "2.0.1",
+  "date": "2025-10-05",
+  "role": "Defines all worker agents, their capabilities, and validation rules for batch processing",
+  
+  "agents": [
+    {
+      "agent_id": 1,
+      "name": "extract",
+      "spec_file": "agent-1-extract_v2.0.1.json",
+      "role": "Parse source into chunks and steps",
+      "input_contract": {
+        "required": ["raw_source", "policy_flags"],
+        "schema_ref": "Extract source (markdown, html, pdf, etc)"
+      },
+      "output_contract": {
+        "required": ["chunks", "steps", "entities"],
+        "output_location": "data/1-extract/",
+        "file_pattern": "{input_basename}_extract.json",
+        "schema_ref": "Structured extraction with traceability"
+      },
+      "validation_rules": {
+        "schema": "All chunks have id+kind, all steps have id+ordinal+title+action+source_refs",
+        "forbidden_patterns": ["emojis", "icons", "ellipsis", "TODO", "speculation"],
+        "completeness_min": 0.98,
+        "fidelity_min": 0.99,
+        "input_isolation": "Must not reference other input files"
+      },
+      "token_allocation_percent": 30
+    },
+    {
+      "agent_id": 2,
+      "name": "inventory",
+      "spec_file": "agent-2-inventory_v2.0.1.json",
+      "role": "Build indices and mappings",
+      "input_contract": {
+        "required": ["extraction_file"],
+        "input_location": "data/1-extract/",
+        "schema_ref": "Extraction output"
+      },
+      "output_contract": {
+        "required": ["indices", "mappings"],
+        "output_location": "data/2-inventory/",
+        "file_pattern": "{input_basename}_inventory.json",
+        "schema_ref": "Consolidated indices with traceability"
+      },
+      "validation_rules": {
+        "schema": "All indices non-empty, all items have source_refs",
+        "forbidden_patterns": ["emojis", "icons"],
+        "completeness_min": 0.98,
+        "traceability": 1.0,
+        "input_isolation": "Must not reference other extraction files"
+      },
+      "token_allocation_percent": 20
+    },
+    {
+      "agent_id": 3,
+      "name": "normalize",
+      "spec_file": "agent-3-normalize_v2.0.1.json",
+      "role": "Map to canonical skeleton",
+      "input_contract": {
+        "required": ["inventory_file"],
+        "input_location": "data/2-inventory/",
+        "schema_ref": "Inventory output"
+      },
+      "output_contract": {
+        "required": ["skeleton"],
+        "output_location": "data/3-normalize/",
+        "file_pattern": "{input_basename}_normalize.json",
+        "schema_ref": "Fixed section order, stable IDs"
+      },
+      "validation_rules": {
+        "schema": "All sections present, steps ordered by ordinal",
+        "forbidden_patterns": ["emojis", "icons"],
+        "section_order": ["overview", "prerequisites", "setup", "steps", "validation", "troubleshooting", "references"],
+        "input_isolation": "Must not reference other inventory files"
+      },
+      "token_allocation_percent": 20
+    },
+    {
+      "agent_id": 4,
+      "name": "configure",
+      "spec_file": "agent-4-configure_v2.0.1.json",
+      "role": "Filter by user profile",
+      "input_contract": {
+        "required": ["normalize_file"],
+        "optional": ["profile"],
+        "input_location": "data/3-normalize/",
+        "profile_location": "data/profile.json",
+        "schema_ref": "Normalized skeleton + user profile"
+      },
+      "output_contract": {
+        "required": ["selected_content", "exclusions"],
+        "output_location": "data/4-configure/",
+        "file_pattern": "{input_basename}_configure.json",
+        "schema_ref": "Filtered content with documented exclusions"
+      },
+      "validation_rules": {
+        "schema": "selected_content non-empty, all exclusions documented",
+        "forbidden_patterns": ["emojis", "icons"],
+        "input_isolation": "Must not reference other normalize files"
+      },
+      "token_allocation_percent": 10
+    },
+    {
+      "agent_id": 5,
+      "name": "generate",
+      "spec_file": "agent-5-generate_v2.0.1.json",
+      "role": "Emit final Markdown and JSON",
+      "input_contract": {
+        "required": ["configure_file"],
+        "input_location": "data/4-configure/",
+        "schema_ref": "Configured content"
+      },
+      "output_contract": {
+        "required": ["tutorial_md", "tutorial_json"],
+        "output_location": "data/5-generate/",
+        "file_pattern_md": "{input_basename}.md",
+        "file_pattern_json": "{input_basename}.json",
+        "schema_ref": "Final formatted output"
+      },
+      "validation_rules": {
+        "schema": "Both files present, markdown valid, steps numbered 1..N",
+        "forbidden_patterns": ["emojis", "icons", "trailing_spaces"],
+        "formatting": "LF line endings, 2 space indent, UTF-8",
+        "input_isolation": "Must not reference other configure files"
+      },
+      "token_allocation_percent": 40
+    }
+  ],
+  
+  "global_rules": {
+    "batch_processing": {
+      "enabled": true,
+      "mode": "stage_by_stage",
+      "description": "All inputs through Stage 1, then all through Stage 2, etc.",
+      "input_isolation": {
+        "rule": "Each input processed independently",
+        "enforcement": "Agent MUST NOT infer properties from other inputs",
+        "validation": "Outputs reviewed for cross-contamination",
+        "examples": [
+          "FORBIDDEN: 'Based on other tutorials, this one likely uses...'",
+          "FORBIDDEN: 'Similar to tutorial-2, this tutorial requires...'",
+          "ALLOWED: 'This tutorial requires Python based on content analysis'"
+        ]
+      },
+      "file_naming": {
+        "preserve_basename": true,
+        "pattern": "{input_basename}_{stage_name}.{ext}",
+        "example": "tutorial-1.md -> tutorial-1_extract.json -> tutorial-1_inventory.json"
+      }
+    },
+    "forbidden_patterns": {
+      "no_emojis_icons": {
+        "pattern": "/[\\u{1F300}-\\u{1F9FF}\\u{2600}-\\u{26FF}\\u{2700}-\\u{27BF}\\u{2190}-\\u{21FF}]/u",
+        "severity": "BLOCKER",
+        "message": "NO emojis or icons - ASCII only"
+      },
+      "no_ellipsis": {
+        "pattern": "/\\.\\.\\./"  ,
+        "severity": "BLOCKER"
+      },
+      "no_todo": {
+        "pattern": "/\\b(TODO|TBD|FIXME)\\b/",
+        "severity": "BLOCKER"
+      },
+      "no_speculation": {
+        "pattern": "/\\b(maybe|perhaps|likely)\\b/",
+        "severity": "WARNING"
+      },
+      "no_cross_reference": {
+        "pattern": "/\\b(other (tutorials?|files?|inputs?)|similar to|like (tutorial|file|input)[-_ ]?\\d+)\\b/i",
+        "severity": "BLOCKER",
+        "message": "NO references to other input files - input isolation required"
+      }
+    },
+    "quality_thresholds": {
+      "completeness_min": 0.98,
+      "fidelity_min": 0.99,
+      "schema_conformance": 1.0,
+      "token_usage_max": 0.85,
+      "input_isolation": 1.0
+    },
+    "token_management": {
+      "allocation_mode": "percentage",
+      "total_window": 200000,
+      "allocation_sum": 120,
+      "allocation_note": "Sum is 120% because agents run sequentially, not parallel. Overlap is acceptable.",
+      "runtime_calculation": "actual_target = (total_window * agent.token_allocation_percent / 100)",
+      "safety_threshold": 0.85,
+      "abort_threshold": 0.90,
+      "checkpoint_frequency": "every 5000 tokens",
+      "per_file_budget": "Token allocation applies per file, not per batch",
+      "example_targets": {
+        "note": "With total_window=200000",
+        "extract": "200000 * 0.30 = 60000 tokens per file",
+        "inventory": "200000 * 0.20 = 40000 tokens per file",
+        "normalize": "200000 * 0.20 = 40000 tokens per file",
+        "configure": "200000 * 0.10 = 20000 tokens per file",
+        "generate": "200000 * 0.40 = 80000 tokens per file"
+      }
+    },
+    "output_structure": {
+      "per_stage_directories": true,
+      "directory_pattern": "data/{stage_id}-{stage_name}/",
+      "file_pattern": "{input_basename}_{stage_name}.{ext}",
+      "stage_directories": [
+        "data/1-extract/",
+        "data/2-inventory/",
+        "data/3-normalize/",
+        "data/4-configure/",
+        "data/5-generate/"
+      ]
+    }
+  },
+  
+  "orchestrator_integration": {
+    "task_reception": "Agent receives task object from orchestrator with specific input file",
+    "task_execution": "Agent executes per spec, processes ONLY assigned input file",
+    "result_submission": "Agent returns result object with output written to stage directory",
+    "validation_feedback": "Orchestrator sends ACCEPT or REJECT per file",
+    "batch_awareness": "Agent knows it's part of batch but processes independently"
+  },
+  
+  "changelog": [
+    {
+      "version": "2.0.1",
+      "date": "2025-10-05",
+      "changes": [
+        "Changed: All directory references to lowercase",
+        "Changed: data/ (was DATA/)",
+        "Updated: All path references throughout configuration",
+        "Note: Follows open source naming conventions"
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2025-10-05",
+      "changes": [
+        "BREAKING: Changed output structure to stage directories (data/{N}-{stage}/)",
+        "BREAKING: Added input_isolation rules - no cross-contamination",
+        "BREAKING: File naming preserves input basename across pipeline",
+        "Added: batch_processing global rules",
+        "Added: no_cross_reference forbidden pattern",
+        "Added: input_isolation validation rule for all agents",
+        "Added: output_structure definition with stage directories",
+        "Enhanced: Token management now per-file budget",
+        "Enhanced: Agent specs now reference v2.0.0",
+        "Migration: Update all agent spec files to v2.0.0"
+      ]
+    }
+  ]
+}
