@@ -1,6 +1,6 @@
 {
   "name": "TO-GO Agent: Tutorial Recycling",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Agentic pipeline for processing tutorials into standardized formats",
   "repository": "https://github.com/neomint-research/to-go-agent-tutorial-recycling",
   "copyright": "MINT-RESEARCH by NeoMINT GmbH 2025",
@@ -12,56 +12,65 @@
     "enforcement": "STRICT",
     
     "root_files": {
-      "required": [
+      "allowed": [
         "README.md",
         "LICENSE",
         ".gitignore",
         "project.manifest.json"
       ],
-      "forbidden": [
-        "Any .json files in root (must be in definitions/)",
-        "Any working files (must be in data/ or temp/)"
-      ]
+      "write_protected": true,
+      "enforcement": "ONLY files listed above are permitted in root. NO new files may be created in root directory.",
+      "violations": [
+        "Creating any .json files in root (must go to data/ or temp/)",
+        "Creating any working files in root (must go to data/ or temp/)",
+        "Creating any log files in root (must go to temp/)",
+        "Creating any output files in root (must go to data/{stage}/)"
+      ],
+      "on_violation": "ABORT operation and report error. Suggest correct location."
     },
     
     "root_directories": {
-      "required": [
+      "allowed": [
         "definitions",
         "data",
         "temp",
         "docs"
       ],
-      "forbidden": [
-        "Any other directories"
-      ]
+      "write_protected": true,
+      "enforcement": "ONLY directories listed above are permitted in root. NO new directories may be created.",
+      "on_violation": "ABORT operation and report error"
     },
     
     "definitions_directory": {
       "path": "definitions/",
       "description": "Agent definitions and schemas - IMMUTABLE during runtime",
+      "access": "READ-ONLY",
       "required_files": [
-        "orchestrator.agent_v2.0.0.json",
-        "agent.config_v2.0.0.json",
-        "task.schema_v2.0.0.json",
-        "agent-1-extract_v2.0.0.json",
-        "agent-2-inventory_v2.0.0.json",
-        "agent-3-normalize_v2.0.0.json",
-        "agent-4-configure_v2.0.0.json",
-        "agent-5-generate_v2.0.0.json"
+        "orchestrator.agent_v2.0.1.json",
+        "agent.config_v2.0.1.json",
+        "task.schema_v2.0.1.json",
+        "agent-1-extract_v2.0.1.json",
+        "agent-2-inventory_v2.0.1.json",
+        "agent-3-normalize_v2.0.1.json",
+        "agent-4-configure_v2.0.1.json",
+        "agent-5-generate_v2.0.1.json"
       ],
       "allowed_files": [
         "Files matching pattern: *.json with semantic versioning"
       ],
       "forbidden": [
-        "Any subdirectories",
-        "Any non-JSON files",
-        "Any files without version suffix"
-      ]
+        "Creating any new files",
+        "Modifying any existing files",
+        "Creating any subdirectories",
+        "Any non-JSON files"
+      ],
+      "enforcement": "READ-ONLY during runtime. Modifications ONLY allowed during development/version updates."
     },
     
     "data_directory": {
       "path": "data/",
       "description": "Working directory for pipeline inputs and outputs - READ/WRITE",
+      "access": "READ/WRITE",
       "required_subdirectories": [
         "input",
         "1-extract",
@@ -70,85 +79,168 @@
         "4-configure",
         "5-generate"
       ],
-      "allowed_patterns": [
-        "input/*.md",
-        "input/*.html",
-        "input/*.pdf",
-        "1-extract/*_extract.json",
-        "2-inventory/*_inventory.json",
-        "3-normalize/*_normalize.json",
-        "4-configure/*_configure.json",
-        "5-generate/*.md",
-        "5-generate/*.json",
-        "task-tracker_*.json",
-        "profile.json"
-      ],
-      "required_files": [
-        ".gitkeep"
+      "allowed_file_locations": {
+        "input/": ["*.md", "*.html", "*.pdf"],
+        "1-extract/": ["*_extract.json"],
+        "2-inventory/": ["*_inventory.json"],
+        "3-normalize/": ["*_normalize.json"],
+        "4-configure/": ["*_configure.json"],
+        "5-generate/": ["*.md", "*.json"],
+        "data/": ["task-tracker_session_*.json", "profile.json", ".gitkeep"]
+      },
+      "forbidden": [
+        "Writing files directly to data/ root (except task-tracker and profile.json)",
+        "Creating new subdirectories",
+        "Writing to wrong stage directory"
       ],
       "git_tracked": false,
-      "note": "Contents are gitignored except .gitkeep. Stage outputs go to numbered subdirectories."
+      "note": "Contents are gitignored except .gitkeep. All stage outputs MUST go to numbered subdirectories."
     },
     
     "temp_directory": {
       "path": "temp/",
-      "description": "Ephemeral logs and debugging - READ/WRITE",
+      "description": "Ephemeral logs, debugging, and temporary files - READ/WRITE",
+      "access": "READ/WRITE",
       "allowed_patterns": [
         "*.log",
         "*.txt",
-        "*.md (documentation only)"
+        "*.json (debugging only)",
+        "*.md (notes only)",
+        "archive/*.* (moved violations)",
+        "logs/*.*",
+        "scratch/*.*"
       ],
       "required_files": [
-        ".gitkeep"
+        ".gitkeep",
+        "README.md"
+      ],
+      "allowed_subdirectories": [
+        "archive",
+        "logs",
+        "scratch",
+        "prompts"
       ],
       "git_tracked": false,
-      "note": "Contents are gitignored except .gitkeep"
+      "note": "Use temp/ for ALL temporary outputs, logs, debugging info, and moved violations. Contents are gitignored except .gitkeep and README.md"
     },
     
     "docs_directory": {
       "path": "docs/",
       "description": "Documentation files - READ-ONLY during runtime",
+      "access": "READ-ONLY",
       "required_files": [
         "PIPELINE.md",
         "USAGE.md",
         "TROUBLESHOOTING.md",
         "DEVELOPMENT.md",
-        "REFERENCE.md"
+        "REFERENCE.md",
+        "CONVENTIONS.md",
+        "CUSTOM_INSTRUCTIONS.md"
       ],
       "allowed_patterns": [
         "*.md"
       ],
+      "forbidden": [
+        "Creating new files during runtime",
+        "Modifying files during runtime",
+        "Any non-markdown files"
+      ],
       "git_tracked": true,
-      "note": "Documentation structure for GitHub navigation"
+      "note": "Documentation structure for GitHub. Modifications ONLY during development."
+    }
+  },
+  
+  "write_rules": {
+    "critical_enforcement": "ROOT DIRECTORY IS WRITE-PROTECTED",
+    "allowed_write_locations": [
+      "data/input/ - Input files only",
+      "data/1-extract/ - Stage 1 outputs only",
+      "data/2-inventory/ - Stage 2 outputs only",
+      "data/3-normalize/ - Stage 3 outputs only",
+      "data/4-configure/ - Stage 4 outputs only",
+      "data/5-generate/ - Stage 5 outputs only",
+      "data/ - task-tracker_*.json and profile.json ONLY",
+      "temp/ - All logs, debugging, scratch work, moved violations"
+    ],
+    "forbidden_write_locations": [
+      "/ (root) - NEVER write any new files",
+      "definitions/ - READ-ONLY",
+      "docs/ - READ-ONLY during runtime"
+    ],
+    "on_violation": {
+      "action": "ABORT write operation immediately",
+      "message": "ERROR: Attempted write to protected location: {path}. Root directory is write-protected. Use data/ for outputs or temp/ for logs.",
+      "suggest": "Move file to appropriate location: data/{stage}/ for outputs, temp/ for logs"
     }
   },
   
   "validation_rules": {
-    "on_violation": "Move violating files to temp/ for review",
-    "check_frequency": "On initialization, before/after file operations",
-    "enforcement_level": "STRICT"
+    "pre_write_check": "Before ANY file write, verify target path is in allowed_write_locations",
+    "post_write_check": "After file operations, scan root for unauthorized files",
+    "on_violation": "Move violating files to temp/archive/ and log violation",
+    "check_frequency": "Before initialization, after every file write, before user gates",
+    "enforcement_level": "STRICT - zero tolerance for violations"
   },
   
   "enforcement_rules": [
-    "NEVER modify files in definitions directory (definitions/) during runtime",
-    "NEVER create new files in definitions directory during runtime",
+    "CRITICAL: ROOT directory is WRITE-PROTECTED - zero new files allowed",
+    "NEVER write any files to root directory (/) except the 4 allowed files",
+    "NEVER modify files in definitions/ directory during runtime",
+    "NEVER create new files in definitions/ directory during runtime",
+    "NEVER modify files in docs/ directory during runtime",
     "ALWAYS write pipeline outputs to data/{stage-id}-{stage-name}/",
-    "ALWAYS write task trackers to data/",
-    "Input files must be in data/input/",
-    "Optionally write logs and debug info to temp/",
-    "Definitions are immutable at runtime"
+    "ALWAYS write task trackers to data/ (root of data directory)",
+    "ALWAYS write logs and debugging to temp/",
+    "Input files MUST be in data/input/",
+    "If unsure where to write: temp/ is always safe for logs/debugging"
   ],
   
   "file_naming_conventions": {
-    "directories": "lowercase_with_underscores (follows open source conventions)",
+    "directories": "lowercase_with_underscores or lowercase-with-dashes",
     "agents": "agent-{id}-{name}_v{major}.{minor}.{patch}.json",
     "schemas": "{name}.schema_v{major}.{minor}.{patch}.json",
     "configs": "{name}.config_v{major}.{minor}.{patch}.json",
     "stage_outputs": "{input_basename}_{stage_name}.json",
-    "final_outputs": "{input_basename}.md and {input_basename}.json"
+    "final_outputs": "{input_basename}.md and {input_basename}.json",
+    "task_tracker": "task-tracker_session_{session_id}.json"
+  },
+  
+  "error_handling": {
+    "root_write_violation": {
+      "severity": "CRITICAL",
+      "action": "ABORT immediately, do not create file",
+      "message": "VIOLATION: Attempted to write {filename} to root directory. Root is write-protected.",
+      "suggestion": "Use data/ for pipeline outputs or temp/ for logs/debugging"
+    },
+    "definitions_write_violation": {
+      "severity": "CRITICAL",
+      "action": "ABORT immediately, do not modify file",
+      "message": "VIOLATION: Attempted to modify {filename} in definitions/. This directory is READ-ONLY during runtime.",
+      "suggestion": "Definitions are immutable. Changes require version update."
+    },
+    "docs_write_violation": {
+      "severity": "HIGH",
+      "action": "ABORT immediately, do not modify file",
+      "message": "VIOLATION: Attempted to modify {filename} in docs/. This directory is READ-ONLY during runtime.",
+      "suggestion": "Documentation changes require separate development workflow."
+    }
   },
   
   "changelog": [
+    {
+      "version": "2.0.2",
+      "date": "2025-10-06",
+      "changes": [
+        "BREAKING: Root directory now WRITE-PROTECTED - no new files allowed",
+        "Added: Explicit write_rules section with allowed/forbidden locations",
+        "Added: pre_write_check validation before any file creation",
+        "Added: Strict enforcement for root, definitions/, and docs/ directories",
+        "Enhanced: Error handling with specific violation types",
+        "Added: temp/ as safe location for all logs and debugging",
+        "Clarified: Only 4 files permitted in root (README, LICENSE, .gitignore, manifest)",
+        "Note: Forces clean separation - outputs to data/, logs to temp/, root is immutable"
+      ]
+    },
     {
       "version": "2.0.1",
       "date": "2025-10-05",
@@ -157,25 +249,8 @@
         "Changed: definitions/ (was TO-GO-AGENT_TUTORIAL-RECYCLING/)",
         "Changed: data/ (was DATA/)",
         "Changed: temp/ (was TEMP/)",
-        "Changed: data/input/ (was DATA/Input/)",
         "Added: docs/ directory for documentation structure",
-        "Updated: All path references throughout manifest",
-        "Note: Follows standard open source naming conventions"
-      ]
-    },
-    {
-      "version": "2.0.0",
-      "date": "2025-10-05",
-      "changes": [
-        "BREAKING: Stage-by-stage batch processing (all files through Stage 1, then Stage 2, etc.)",
-        "BREAKING: Output structure changed to data/{N}-{stage}/ directories",
-        "BREAKING: User gates required between stages for approval",
-        "BREAKING: Input must be in data/input/ (not root or temp/)",
-        "Added: Batch processing - no cross-contamination between inputs",
-        "Added: User gates after each stage for review and approval",
-        "Added: Stage-isolated output directories for clear separation",
-        "Enhanced: File naming convention with input basename preservation",
-        "Migration: Move input files to data/input/, update workflows"
+        "Updated: All path references throughout manifest"
       ]
     }
   ]
